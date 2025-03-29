@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', function() {
+    // API地址配置
+    window.API_BASE_URL = 'https://xinwenredian.onrender.com/api';
+    
     // 初始化日期和时间显示
     updateDateTime();
     
@@ -8,12 +11,6 @@ document.addEventListener('DOMContentLoaded', function() {
     // 默认加载微博热搜
     loadHotSearchList('weibo');
     
-    // 初始化登录注册功能
-    initAuthSystem();
-    
-    // 检查用户登录状态并更新UI
-    updateAuthUI();
-    
     // 注册模态框关闭事件
     document.getElementById('closeModal').addEventListener('click', closeModal);
     window.addEventListener('click', function(event) {
@@ -22,6 +19,9 @@ document.addEventListener('DOMContentLoaded', function() {
             closeModal();
         }
     });
+
+    // 检查用户登录状态
+    handleUserAuth();
 });
 
 // 更新日期和时间显示
@@ -303,65 +303,74 @@ function renderHotSearchList(data, platform) {
 
 // 生成AI内容
 async function generateContent(title, platform) {
-    const contentGeneration = document.getElementById('contentGeneration');
-    
-    // 显示生成中状态
-    contentGeneration.innerHTML = `
-        <div class="generating">
-            <h3>正在为您生成"${title}"的相关图文</h3>
-            <div class="progress-bar">
-                <div class="progress"></div>
-            </div>
-            <p>AI正在分析热搜内容，请稍候...</p>
+    // 显示加载状态
+    document.getElementById('contentGeneration').innerHTML = `
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>AI正在分析"${title}"相关新闻，请稍候...</p>
         </div>
     `;
     
-    // 开始进度条动画
-    const progressBar = document.querySelector('.progress');
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-        progress += 1;
-        if (progress > 95) {
-            clearInterval(progressInterval);
-        }
-        progressBar.style.width = `${progress}%`;
-    }, 100);
-    
     try {
-        // 生成一个随机图片URL
-        const randomImageNumber = Math.floor(Math.random() * 10) + 1;
-        const imageUrl = `https://source.unsplash.com/random/800x450?${encodeURIComponent(title)}&sig=${randomImageNumber}`;
+        // 在生产环境中这里应该调用真实的AI生成API
+        // 为了演示，这里使用本地模拟的内容
+        let content;
         
-        // 生成更智能的本地内容
-        const generatedContent = generateLocalContent(title, platform);
+        // 如果是开发环境，使用本地模拟内容
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            content = await generateLocalContent(title, platform);
+        } else {
+            // 生产环境中调用真实API
+            // 这里应该替换为实际的API调用
+            content = await fetchAIGeneratedContent(title, platform);
+        }
         
-        // 清除进度条定时器
-        clearInterval(progressInterval);
-        progressBar.style.width = '100%';
-        
-        // 添加图片到生成的内容
-        generatedContent.imageUrl = imageUrl;
-        
-        renderGeneratedContent(generatedContent);
+        // 渲染生成的内容
+        renderGeneratedContent(content);
     } catch (error) {
-        console.error('内容生成过程中出现错误:', error);
+        console.error('生成内容失败:', error);
+        document.getElementById('contentGeneration').innerHTML = `
+            <div class="error-state">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p>AI内容生成失败，请稍后再试</p>
+                <button class="retry-btn" onclick="generateContent('${title}', '${platform}')">
+                    <i class="fa-solid fa-rotate"></i> 重试
+                </button>
+            </div>
+        `;
+    }
+}
+
+// 从API获取AI生成的内容
+async function fetchAIGeneratedContent(title, platform) {
+    try {
+        // 调用后端API生成内容
+        const response = await fetch(`${window.API_BASE_URL}/generate-content`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                title,
+                platform
+            })
+        });
         
-        // 清除进度条定时器
-        clearInterval(progressInterval);
+        if (!response.ok) {
+            throw new Error(`服务器响应错误: ${response.status} ${response.statusText}`);
+        }
         
-        // 使用最基础的备用内容
-        const basicContent = {
-            title: title,
-            imageUrl: `https://source.unsplash.com/random/800x450?sig=${Math.floor(Math.random() * 100)}`,
-            text: `
-                <p>很抱歉，无法生成"${title}"的相关内容。</p>
-                <p>请检查您的网络连接，或稍后再试。</p>
-            `,
-            isBackup: true,
-            isError: true
-        };
+        const data = await response.json();
         
-        renderGeneratedContent(basicContent);
+        if (!data.success) {
+            throw new Error(data.message || '生成内容失败');
+        }
+        
+        return data.content;
+    } catch (error) {
+        console.error('获取AI生成内容失败:', error);
+        // 如果API调用失败，返回本地模拟内容
+        return getMockGeneratedContent(title, platform);
     }
 }
 
@@ -781,308 +790,33 @@ style.textContent = `
 
 document.head.appendChild(style);
 
-// 初始化登录注册功能
-function initAuthSystem() {
-    // 登录按钮点击事件
-    document.getElementById('loginBtn').addEventListener('click', function() {
-        showLoginModal();
-    });
-    
-    // 注册按钮点击事件
-    document.getElementById('registerBtn').addEventListener('click', function() {
-        showRegisterModal();
-    });
-    
-    // 关闭登录模态框
-    document.getElementById('closeLoginModal').addEventListener('click', function() {
-        hideLoginModal();
-    });
-    
-    // 关闭注册模态框
-    document.getElementById('closeRegisterModal').addEventListener('click', function() {
-        hideRegisterModal();
-    });
-    
-    // 从登录转到注册
-    document.getElementById('goToRegister').addEventListener('click', function(e) {
-        e.preventDefault();
-        hideLoginModal();
-        setTimeout(showRegisterModal, 300);
-    });
-    
-    // 从注册转到登录
-    document.getElementById('goToLogin').addEventListener('click', function(e) {
-        e.preventDefault();
-        hideRegisterModal();
-        setTimeout(showLoginModal, 300);
-    });
-    
-    // 关闭登录和注册模态框的点击外部区域事件
-    window.addEventListener('click', function(event) {
-        const loginModal = document.getElementById('loginModal');
-        const registerModal = document.getElementById('registerModal');
-        
-        if (event.target === loginModal) {
-            hideLoginModal();
-        }
-        
-        if (event.target === registerModal) {
-            hideRegisterModal();
-        }
-    });
-    
-    // 登录表单提交
-    document.getElementById('submitLogin').addEventListener('click', function() {
-        handleLogin();
-    });
-    
-    // 注册表单提交
-    document.getElementById('submitRegister').addEventListener('click', function() {
-        handleRegister();
-    });
+// 用户登录状态管理
+function handleUserAuth() {
+    const userActionsElement = document.getElementById('userActions');
+    if (!userActionsElement) return;
 
-    // 添加键盘事件处理
-    document.getElementById('loginUsername').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            document.getElementById('loginPassword').focus();
-        }
-    });
+    // 获取用户信息
+    const user = getCurrentUser();
 
-    document.getElementById('loginPassword').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            handleLogin();
-        }
-    });
-
-    document.getElementById('registerUsername').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            document.getElementById('registerPassword').focus();
-        }
-    });
-
-    document.getElementById('registerPassword').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            document.getElementById('confirmPassword').focus();
-        }
-    });
-
-    document.getElementById('confirmPassword').addEventListener('keypress', function(e) {
-        if (e.key === 'Enter') {
-            handleRegister();
-        }
-    });
-}
-
-// 显示登录模态框
-function showLoginModal() {
-    const modal = document.getElementById('loginModal');
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-    setTimeout(function() {
-        modal.style.opacity = '1';
-    }, 10);
-}
-
-// 隐藏登录模态框
-function hideLoginModal() {
-    const modal = document.getElementById('loginModal');
-    modal.style.opacity = '0';
-    setTimeout(function() {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }, 300);
-}
-
-// 显示注册模态框
-function showRegisterModal() {
-    const modal = document.getElementById('registerModal');
-    modal.style.display = 'flex';
-    document.body.style.overflow = 'hidden';
-    setTimeout(function() {
-        modal.style.opacity = '1';
-    }, 10);
-}
-
-// 隐藏注册模态框
-function hideRegisterModal() {
-    const modal = document.getElementById('registerModal');
-    modal.style.opacity = '0';
-    setTimeout(function() {
-        modal.style.display = 'none';
-        document.body.style.overflow = '';
-    }, 300);
-}
-
-// 处理登录
-async function handleLogin() {
-    const username = document.getElementById('loginUsername').value.trim();
-    const password = document.getElementById('loginPassword').value;
-    
-    // 简单的表单验证
-    if (!username || !password) {
-        showAuthMessage('loginModal', '请输入用户名和密码', 'error');
-        return;
-    }
-    
-    // 显示登录中状态
-    showAuthMessage('loginModal', '登录中...', 'info');
-    
-    try {
-        // 调用API服务进行登录
-        const response = await ApiService.login(username, password);
-        
-        // 显示登录成功消息
-        showAuthMessage('loginModal', '登录成功！', 'success');
-        
-        // 关闭模态框并更新UI
-        setTimeout(function() {
-            hideLoginModal();
-            updateAuthUI();
-        }, 1000);
-    } catch (error) {
-        // 显示错误消息
-        showAuthMessage('loginModal', error.message || '登录失败，请稍后再试', 'error');
-    }
-}
-
-// 处理注册
-async function handleRegister() {
-    const username = document.getElementById('registerUsername').value.trim();
-    const password = document.getElementById('registerPassword').value;
-    const confirmPassword = document.getElementById('confirmPassword').value;
-    
-    // 简单的表单验证
-    if (!username || !password) {
-        showAuthMessage('registerModal', '请输入用户名和密码', 'error');
-        return;
-    }
-    
-    if (password !== confirmPassword) {
-        showAuthMessage('registerModal', '两次输入的密码不一致', 'error');
-        return;
-    }
-    
-    // 显示注册中状态
-    showAuthMessage('registerModal', '注册中...', 'info');
-    
-    try {
-        // 调用API服务进行注册
-        const response = await ApiService.register(username, password);
-        
-        // 显示注册成功消息
-        showAuthMessage('registerModal', '注册成功！', 'success');
-        
-        // 关闭注册模态框并打开登录模态框
-        setTimeout(function() {
-            hideRegisterModal();
-            setTimeout(function() {
-                showLoginModal();
-                showAuthMessage('loginModal', '请使用新注册的账号登录', 'info');
-            }, 300);
-        }, 1000);
-    } catch (error) {
-        // 显示错误消息
-        showAuthMessage('registerModal', error.message || '注册失败，请稍后再试', 'error');
-    }
-}
-
-// 显示认证相关消息
-function showAuthMessage(modalId, message, type) {
-    const modal = document.getElementById(modalId);
-    
-    // 检查是否已存在消息元素，如果存在则先移除
-    const existingMessage = modal.querySelector('.auth-message');
-    if (existingMessage) {
-        existingMessage.remove();
-    }
-    
-    // 创建消息元素
-    const messageEl = document.createElement('div');
-    messageEl.className = `auth-message ${type}`;
-    
-    // 根据消息类型选择图标
-    let icon = '';
-    switch (type) {
-        case 'success':
-            icon = '<i class="fas fa-check-circle"></i>';
-            break;
-        case 'error':
-            icon = '<i class="fas fa-exclamation-circle"></i>';
-            break;
-        case 'info':
-            icon = '<i class="fas fa-info-circle"></i>';
-            break;
-        default:
-            icon = '';
-    }
-    
-    messageEl.innerHTML = `${icon} ${message}`;
-    
-    // 将消息添加到模态框中
-    const form = modal.querySelector('.auth-form');
-    form.insertBefore(messageEl, form.firstChild);
-    
-    // 如果是成功或错误消息，设置自动隐藏
-    if (type === 'success' || type === 'error') {
-        setTimeout(function() {
-            messageEl.classList.add('hiding');
-            setTimeout(function() {
-                messageEl.remove();
-            }, 300);
-        }, 3000);
-    }
-}
-
-// 更新认证UI
-function updateAuthUI() {
-    const currentUser = JSON.parse(localStorage.getItem('currentUser'));
-    const userActions = document.querySelector('.user-actions');
-    
-    if (currentUser && currentUser.isLoggedIn) {
+    if (user) {
         // 用户已登录，显示用户信息和退出按钮
-        userActions.innerHTML = `
+        userActionsElement.innerHTML = `
             <div class="user-info">
-                <i class="fas fa-user-circle"></i>
-                <span>${currentUser.username}</span>
+                <span class="username"><i class="fas fa-user-circle"></i> ${user.username}</span>
+                <button id="logoutBtn" class="logout-btn"><i class="fas fa-sign-out-alt"></i> 退出登录</button>
             </div>
-            <button id="logoutBtn" class="auth-btn">
-                <i class="fas fa-sign-out-alt"></i> 退出
-            </button>
         `;
-        
+
         // 添加退出登录事件
-        document.getElementById('logoutBtn').addEventListener('click', handleLogout);
+        document.getElementById('logoutBtn').addEventListener('click', function() {
+            // 调用共享的登出函数
+            logout();
+        });
     } else {
         // 用户未登录，显示登录和注册按钮
-        userActions.innerHTML = `
-            <button id="loginBtn" class="auth-btn">
-                <i class="fas fa-sign-in-alt"></i> 登录
-            </button>
-            <button id="registerBtn" class="auth-btn">
-                <i class="fas fa-user-plus"></i> 注册
-            </button>
+        userActionsElement.innerHTML = `
+            <a href="login.html" class="auth-link" id="loginBtn">登录</a>
+            <a href="register.html" class="auth-link register" id="registerBtn">注册</a>
         `;
-        
-        // 重新添加登录和注册事件
-        document.getElementById('loginBtn').addEventListener('click', showLoginModal);
-        document.getElementById('registerBtn').addEventListener('click', showRegisterModal);
     }
-}
-
-// 处理退出登录
-function handleLogout() {
-    try {
-        // 调用API服务进行注销
-        ApiService.logout();
-        
-        // 更新UI
-        updateAuthUI();
-    } catch (error) {
-        console.error('注销时出错:', error);
-    }
-}
-
-// 检查用户登录状态
-function checkLoginStatus() {
-    return ApiService.isAuthenticated();
 } 
